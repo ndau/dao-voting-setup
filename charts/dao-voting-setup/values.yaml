@@ -1,0 +1,78 @@
+# Global requirements
+global:
+  cluster:
+    project: needs-a-project-id
+
+# Defines whether this should be a Deployment, Job, CronJob, or KNative Service
+# options: deployment, job, cronjob, kservice
+type: kservice
+
+# Knative Service specific config options
+kservice:
+  timeoutSeconds: 600
+
+pingsource:
+  enabled: true
+  schedule: '0 0 * * *'
+
+# Horizontally scale the application
+replicaCount: 1
+
+# Modify metadata for different resources
+metadata:
+  service: {}
+
+# Image configuration
+image:
+  repository: ndau/dao-voting-setup
+  tag: latest
+  pullPolicy: IfNotPresent
+  imagePullSecrets:
+
+# Define resources for the container
+resources:
+  default:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+# Provide custom env here
+env: {}
+
+# Configuration for the service resource
+service:
+  enabled: true
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+      name: http
+
+# Config for the liveness probe
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  successThreshold: 1
+  timeoutSeconds: 1
+
+# Config for the readiness probe
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  periodSeconds: 10
+  successThreshold: 1
+  timeoutSeconds: 1
+
+# Execution command
+command:
+  - sh
+  - -c
+  - /opt/app/project

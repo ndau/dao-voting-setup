@@ -1,0 +1,38 @@
+{{- if eq .Values.type "kservice" }}
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: {{ template "name" . }}
+  labels:
+    app: {{ template "name" . }}
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ template "name" . }}
+    spec:
+      serviceAccountName: {{ template "serviceAccountName" . }}
+      containers:
+      - name: {{ template "name" . }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+{{- if hasKey .Values "command" }}
+        command:
+{{ toYaml .Values.command | trim | indent 8 }}
+{{- end }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: NDAU_CONFIG_NAME
+          value: config
+        - name: NDAU_CONFIG_PATH
+          value: ./config
+        volumeMounts:
+        - name: config
+          mountPath: /opt/app/config/
+      volumes:
+      - name: config
+        secret:
+          secretName: kservice-apps
+  traffic:
+  - latestRevision: true
+    percent: 100
+{{- end }}

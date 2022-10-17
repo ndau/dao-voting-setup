@@ -1,0 +1,14 @@
+{{- if .Values.pingsource.enabled }}
+apiVersion: sources.knative.dev/v1
+kind: PingSource
+metadata:
+  name: {{ template "name" . }}
+spec:
+  schedule: '{{ .Values.pingsource.schedule }}'
+  data: '{ "Network":"mainnet","NodeAPI":"https://mainnet-2.ndau.tech:3030","Limit":100,"StartAfterKey": "-" }'
+  sink:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ template "name" . }}
+{{- end }}
