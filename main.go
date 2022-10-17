@@ -8,7 +8,7 @@ import (
 	"github.com/cenkalti/backoff"
 	config "github.com/ndau/dao-voting-setup/configuration"
 	"github.com/ndau/dao-voting-setup/dal"
-	"github.com/ndau/dao-voting-setup/eventing"
+	"github.com/ndau/dao-voting-setup/serving"
 	configure "github.com/ndau/go-config"
 	logger "github.com/ndau/go-logger"
 )
@@ -55,7 +55,7 @@ func main() {
 	}
 	defer repo.Close()
 
-	kn, err := eventing.NewKnClient(cf, log)
+	kn, err := serving.NewKnClient(cf, log)
 	if err != nil {
 		log.Error("Failed to initialize knative client: %v", err)
 		return
@@ -64,7 +64,7 @@ func main() {
 
 	kn.Run(ctx, repo, cf)
 
-	log.Info("waiting on context Done channel ...")
+	log.Info("Waiting on context Done channel...")
 	<-ctx.Done()
-	log.Info("cancelled context...")
+	log.Info("quit...")
 }

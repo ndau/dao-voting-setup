@@ -1,18 +1,18 @@
-package eventing
+package serving
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"sort"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
+	uuid "github.com/google/uuid"
 	"github.com/ndau/dao-voting-setup/dal"
 	"github.com/ndau/dao-voting-setup/models"
 	logger "github.com/ndau/go-logger"
 	"github.com/ndau/go-ndau"
-	uuid "github.com/satori/uuid"
 )
 
 const (
@@ -21,19 +21,12 @@ const (
 
 // KnClient -
 type KnClient struct {
-	client cloudevents.Client
-
 	// Optional: logging
 	Log logger.Logger
 }
 
 // NewKnClient -
 func NewKnClient(cfg *models.Config, loggers ...logger.Logger) (knc *KnClient, err error) {
-	client, err := cloudevents.NewDefaultClient()
-	if err != nil {
-		return nil, err
-	}
-
 	// Attach an optional logger
 	var log logger.Logger
 	if len(loggers) > 0 {
@@ -43,8 +36,6 @@ func NewKnClient(cfg *models.Config, loggers ...logger.Logger) (knc *KnClient, e
 	}
 
 	return &KnClient{
-		client: client,
-
 		// Optional: logging
 		Log: log,
 	}, nil
@@ -59,45 +50,42 @@ func (k *KnClient) Run(ctx context.Context, repo dal.Repo, cfg *models.Config) e
 
 // Listen ...
 func (k *KnClient) Listen(ctx context.Context, repo dal.Repo, cfg *models.Config) {
-	// Test
-	// data := &models.Data{
-	// 	Network:       "mainnet",
-	// 	NodeAPI:       "https://mainnet-2.ndau.tech:3030",
-	// 	Limit:         100,
-	// 	StartAfterKey: "-",
-	// }
-	// k.ProcessEvent(context.WithValue(context.Background(), "tracking_number", "11111-22222-33333"), data, repo, cfg)
+	trackingNumber := uuid.New().String()
 
-	receive := func(ctx context.Context, event cloudevents.Event) {
-		// Let's create traceable context
-		evtExt := event.Extensions()
-		trackingNumber, ok := evtExt["trackingnumber"].(string)
-		if !ok {
-			trackingNumber = uuid.NewV4().String()
-		}
-
+	handler := func(w http.ResponseWriter, r *http.Request) {
 		thisContext := context.WithValue(ctx, "tracking_number", trackingNumber)
 
-		k.Log.Infof("%s | Start processing knative event: %v ", trackingNumber, event)
-
-		var data models.Data
-		if err := event.DataAs(&data); err != nil {
-			k.Log.Errorf("%s | Failed to unmarshal event data", trackingNumber, err)
-		} else {
-			err := k.ProcessEvent(thisContext, &data, repo, cfg)
-			if err != nil {
-				k.Log.Errorf("%s | Process event failed: %v", trackingNumber, err)
+		k.Log.Infof("%s | Start processing knative request", trackingNumber)
+		fmt.Printf("%+v\n", r)
+		switch r.Method {
+		case "POST":
+			if body, err := ioutil.ReadAll(r.Body); err != nil {
+				k.Log.Errorf("%s | Failed to read request body", trackingNumber, err)
 			} else {
-				k.Log.Infof("%s | Processed event: %v", event.ID())
+				var data models.Data
+				if err := json.Unmarshal(body, &data); err != nil {
+					k.Log.Errorf("%s | Failed to unmarshal request data", trackingNumber, err)
+				} else {
+					err := k.ProcessEvent(thisContext, &data, repo, cfg)
+					if err != nil {
+						k.Log.Errorf("%s | Failed to process the request: %v", trackingNumber, err)
+					} else {
+						k.Log.Infof("%s | Finish")
+					}
+				}
 			}
+		default:
+			k.Log.Errorf("%s | Sorry, only POST method are supported", trackingNumber)
 		}
 	}
 
-	k.Log.Infof("knative is listening on port %d", 8080)
-
-	if err := k.client.StartReceiver(ctx, receive); err != nil {
-		k.Log.Errorf("Failed to start a Receiver: %v", err)
+	port := "8880"
+	http.HandleFunc("/", handler)
+	if err := http.ListenAndServe(fmt.Sprintf(":%s", port), nil); err != nil {
+		k.Log.Errorf("%s | Failed to listening on the port %d: %v", trackingNumber, port, err)
 	}
+
+	k.Log.Infof("knative is listening on port %d", port)
 }
 
 // ProcessEvent ...
