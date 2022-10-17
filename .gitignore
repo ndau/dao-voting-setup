@@ -14,7 +14,7 @@ coverage.html
 
 # Build output
 bin/
-dao-voting-setup
+# dao-voting-setup
 
 # Ignore the vendor directory
 vendor/
@@ -24,4 +24,4 @@ vendor/
 *.iml
 
 # Ignore local config folder
-# config/
+config/

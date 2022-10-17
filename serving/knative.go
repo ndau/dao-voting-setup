@@ -79,7 +79,7 @@ func (k *KnClient) Listen(ctx context.Context, repo dal.Repo, cfg *models.Config
 		}
 	}
 
-	port := "8880"
+	port := "8080"
 	http.HandleFunc("/", handler)
 	if err := http.ListenAndServe(fmt.Sprintf(":%s", port), nil); err != nil {
 		k.Log.Errorf("%s | Failed to listening on the port %d: %v", trackingNumber, port, err)

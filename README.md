@@ -6,7 +6,7 @@
 ```sh
   NDAU_CONFIG_NAME=config NDAU_CONFIG_PATH=./config go run main.go
 ```
-## Test on mainnet
+## Test
 ```sh
 curl -v "http://localhost:8080" \
 -H "Content-Type: application/json" \
