@@ -14,6 +14,7 @@ import (
 	// This blank import is required by the gorm implementation
 	"github.com/ndau/dao-voting-setup/models"
 	logger "github.com/ndau/go-logger"
+	glogger "gorm.io/gorm/logger"
 )
 
 const (
@@ -30,7 +31,9 @@ type Db struct {
 // NewDb ...
 func NewDb(cfg *models.Config, log logger.Logger) (*Db, error) {
 	log.Info(cfg.ConnectionString)
-	db, err := gorm.Open(postgres.Open(ParseURL(cfg.ConnectionString)))
+	db, err := gorm.Open(postgres.Open(ParseURL(cfg.ConnectionString)), &gorm.Config{
+		Logger: glogger.Default.LogMode(glogger.Error),
+	})
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed openning a DB connection")
 	}
@@ -69,6 +72,19 @@ func (db *Db) UpsertVotingList(ctx context.Context, votings []models.VotingSetup
 		Columns:   []clause.Column{{Name: "address"}},
 		DoUpdates: clause.AssignmentColumns([]string{"currency_seat_date", "votes"}),
 	}).CreateInBatches(votings, 1000).Error
+}
+
+// Unseat -
+func (db *Db) Unseat(ctx context.Context, addresses []string) error {
+	trackingNumber := ctx.Value("tracking_number").(string)
+	db.Log.Infof("%s | Try to update upto '%d' accounts that lost their seats, if existed", trackingNumber, len(addresses))
+
+	if res := db.Client.Table(table).Where("address IN ?", addresses).Updates(map[string]interface{}{"currency_seat_date": "0001-01-01", "votes": 0.0}); res.Error == nil {
+		db.Log.Infof("%s | Unseated '%d' accounts", trackingNumber, res.RowsAffected)
+		return nil
+	} else {
+		return res.Error
+	}
 }
 
 // ParseURL - Prase the DB connection string

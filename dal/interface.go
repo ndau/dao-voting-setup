@@ -10,5 +10,6 @@ import (
 type Repo interface {
 	Close()
 	ListAccount() ([]models.VotingSetup, error)
+	Unseat(ctx context.Context, addresses []string) error
 	UpsertVotingList(ctx context.Context, votings []models.VotingSetup) error
 }

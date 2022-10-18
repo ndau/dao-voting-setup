@@ -164,6 +164,16 @@ func (k *KnClient) cacheBuilder(ctx context.Context, data *models.Data, repo dal
 	var void struct{}
 	cache := models.Cached{}
 
+	// Get the existing database first
+	// Update accounts that lost their seats
+	if accounts, err := repo.ListAccount(); err != nil {
+		k.Log.Warnf("%s | Failed to read accounts from database. Error: %v. Will try my best", trackingNumber, err)
+	} else {
+		for _, account := range accounts {
+			cache[account.Address] = void
+		}
+	}
+
 	// limit is the number of accounts in a single query -- this is limited by the
 	// blockchain API and so we have to do a set of requests to get all the data
 	limit := data.Limit
@@ -216,6 +226,7 @@ func (k *KnClient) watcher(ctx context.Context, data *models.Data, cfg *models.C
 	numberOfAccounts := len(cache)
 	addresses := []string{}
 
+	unseatList := []string{}
 	for address, _ := range cache {
 		addresses = append(addresses, address)
 		count++
@@ -226,9 +237,16 @@ func (k *KnClient) watcher(ctx context.Context, data *models.Data, cfg *models.C
 			sort.Strings(addresses)
 
 			// Update account balance
-			if accounts, total_balance, err := k.updateBalance(ctx, addresses, conn); err == nil {
+			if accounts, unseats, total_balance, err := k.updateBalance(ctx, addresses, conn); err == nil {
 				totalNdau = totalNdau + total_balance
 				votingList = append(votingList, accounts...)
+
+				for _, unseat := range unseats {
+					if _, being := cache[unseat]; being {
+						unseatList = append(unseatList, unseat)
+					}
+				}
+
 			} else {
 				k.Log.Errorf("%s | Failed to update account balances from address: %s. Error = %s", trackingNumber, addresses[0], err.Error())
 				return nil, 0, err
@@ -239,10 +257,15 @@ func (k *KnClient) watcher(ctx context.Context, data *models.Data, cfg *models.C
 		}
 	}
 
+	// Update accounts that lost their seats
+	if err := repo.Unseat(ctx, unseatList); err != nil {
+		k.Log.Errorf("%s | Failed to unseat accounts. Error: %v", trackingNumber, err)
+	}
+
 	return votingList, totalNdau, nil
 }
 
-func (k *KnClient) updateBalance(ctx context.Context, addresses []string, conn *ndau.Ndau) (accounts []ndau.Account, total_balance int, err error) {
+func (k *KnClient) updateBalance(ctx context.Context, addresses []string, conn *ndau.Ndau) (accounts []ndau.Account, unseats []string, total_balance int, err error) {
 	trackingNumber, _ := ctx.Value("tracking_number").(string)
 
 	total_balance = 0
@@ -256,13 +279,13 @@ func (k *KnClient) updateBalance(ctx context.Context, addresses []string, conn *
 	res, err := conn.PostDataWithContext(ctx, api, params)
 	if err != nil {
 		k.Log.Errorf("%s | Failed to get account voting list: %s", trackingNumber, err.Error())
-		return nil, total_balance, err
+		return nil, nil, total_balance, err
 	}
 
 	var r ndau.AccountResp
 	if err = json.Unmarshal(res, &r); err != nil {
 		k.Log.Errorf("%s | Failed to unmarshall account detail response: %s", trackingNumber, err.Error())
-		return nil, total_balance, err
+		return nil, nil, total_balance, err
 	}
 
 	for address, val := range r {
@@ -273,15 +296,15 @@ func (k *KnClient) updateBalance(ctx context.Context, addresses []string, conn *
 				Balance:          val.Balance,
 			}
 			accounts = append(accounts, account)
-			total_balance = total_balance + val.Balance
 		} else {
-			total_balance = total_balance + val.Balance
+			unseats = append(unseats, address)
 		}
+		total_balance = total_balance + val.Balance
 	}
 
 	k.Log.Infof("%s | Updated balances for %d accounts", trackingNumber, len(accounts))
 
-	return accounts, total_balance, nil
+	return accounts, unseats, total_balance, nil
 }
 
 func (k *KnClient) updateVote(ctx context.Context, votingList []ndau.Account, total_balance int, repo dal.Repo, conn *ndau.Ndau) error {
