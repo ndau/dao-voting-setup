@@ -320,7 +320,7 @@ func (k *KnClient) updateVote(ctx context.Context, votingList []ndau.Account, to
 		vote := models.VotingSetup{
 			Address:          votingList[i].Id,
 			CurrencySeatDate: votingList[i].CurrencySeatDate,
-			Votes:            3000000 * (1.0/float64(noOfCurrencySeat) + float64(votingList[i].Balance)) / float64(r.TotalNdau),
+			Votes:            3000000 * (1.0/float64(noOfCurrencySeat) + float64(votingList[i].Balance)/float64(r.TotalNdau)),
 		}
 		votes = append(votes, vote)
 	}
