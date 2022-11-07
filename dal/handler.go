@@ -19,7 +19,7 @@ import (
 
 const (
 	dbType = "postgres"
-	table  = "BPCDAO.accounts"
+	table  = "accounts"
 )
 
 type Db struct {

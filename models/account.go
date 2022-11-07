@@ -13,5 +13,5 @@ type VotingSetup struct {
 
 // TableName - Return table name
 func (t VotingSetup) TableName() string {
-	return "BPCDAO.accounts"
+	return "accounts"
 }
