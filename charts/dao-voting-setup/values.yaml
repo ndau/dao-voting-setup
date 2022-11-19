@@ -25,7 +25,7 @@ metadata:
 # Image configuration
 image:
   repository: ndau/dao-voting-setup
-  tag: latest
+  tag: 001
   pullPolicy: IfNotPresent
   imagePullSecrets:
 

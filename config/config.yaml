@@ -1,2 +1,0 @@
-env:
-    NDAU_CONNECTION_STRING: 'postgress://user:pass@host:5432/dbname'

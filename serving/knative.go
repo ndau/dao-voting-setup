@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"sort"
+	"time"
 
 	uuid "github.com/google/uuid"
 	"github.com/ndau/dao-voting-setup/dal"
@@ -41,7 +42,7 @@ func NewKnClient(cfg *models.Config, loggers ...logger.Logger) (knc *KnClient, e
 	}, nil
 }
 
-//Run knative function
+// Run knative function
 func (k *KnClient) Run(ctx context.Context, repo dal.Repo, cfg *models.Config) error {
 	k.Log.Info("Starting knative run...")
 	k.Listen(ctx, repo, cfg)
@@ -227,7 +228,7 @@ func (k *KnClient) watcher(ctx context.Context, data *models.Data, cfg *models.C
 	addresses := []string{}
 
 	unseatList := []string{}
-	for address, _ := range cache {
+	for address := range cache {
 		addresses = append(addresses, address)
 		count++
 		numberOfAccounts--
@@ -251,6 +252,9 @@ func (k *KnClient) watcher(ctx context.Context, data *models.Data, cfg *models.C
 				k.Log.Errorf("%s | Failed to update account balances from address: %s. Error = %s", trackingNumber, addresses[0], err.Error())
 				return nil, 0, err
 			}
+
+			// Give mainnet node some break
+			time.Sleep(5 * time.Second)
 
 			count = 0
 			addresses = []string{}

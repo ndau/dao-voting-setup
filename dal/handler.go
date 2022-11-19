@@ -18,8 +18,7 @@ import (
 )
 
 const (
-	dbType = "postgres"
-	table  = "accounts"
+	table = "accounts"
 )
 
 type Db struct {
@@ -55,9 +54,7 @@ func (db *Db) Close() {
 func (db *Db) ListAccount() ([]models.VotingSetup, error) {
 	accounts := []models.VotingSetup{}
 	if err := db.Client.Order("address asc").Find(&accounts).Error; err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.Wrap(err, "Failed reading from the accounts table")
-		}
+		return nil, errors.Wrap(err, "Failed reading from the accounts table")
 	}
 
 	return accounts, nil
