@@ -124,7 +124,7 @@ func (k *KnClient) ProcessEvent(ctx context.Context, data *models.Data, repo dal
 	}
 
 	// Get account balances and currency seat dates
-	accountList, total, err := k.watcher(ctx, data, cfg, cache, repo, conn)
+	accountList, unseatList, total, err := k.watcher(ctx, data, cfg, cache, repo, conn)
 	if err != nil {
 		k.Log.Errorf("%s | Failed to run diff with the account cache", trackingNumber)
 		return err
@@ -147,7 +147,7 @@ func (k *KnClient) ProcessEvent(ctx context.Context, data *models.Data, repo dal
 	}
 
 	// Compute voting power for each seated account
-	if err = k.updateVote(ctx, accountList, total, repo, conn); err != nil {
+	if err = k.updateVote(ctx, accountList, unseatList, total, repo, conn); err != nil {
 		k.Log.Errorf("%s | Failed to update account votings", trackingNumber)
 	}
 
@@ -209,6 +209,12 @@ func (k *KnClient) cacheBuilder(ctx context.Context, data *models.Data, repo dal
 		if len(r.Accounts) > 0 {
 			for _, address := range r.Accounts {
 				cache[address] = void
+
+				// debug
+				// if address == "ndafkjwzbmzuhxgbvaqhnrpbu83wi3q7adpgbe5bbvi6h8gp" {
+				// 	k.Log.Infof("%s | Got account...............", trackingNumber)
+				// 	return cache, nil
+				// }
 			}
 		}
 
@@ -220,20 +226,22 @@ func (k *KnClient) cacheBuilder(ctx context.Context, data *models.Data, repo dal
 	return cache, nil
 }
 
-func (k *KnClient) watcher(ctx context.Context, data *models.Data, cfg *models.Config, cache models.Cached, repo dal.Repo, conn *ndau.Ndau) (votingList []ndau.Account, totalNdau int, err error) {
+func (k *KnClient) watcher(ctx context.Context, data *models.Data, cfg *models.Config, cache models.Cached, repo dal.Repo, conn *ndau.Ndau) (votingList []ndau.Account, unseatList models.Cached, totalNdau int, err error) {
 	trackingNumber, _ := ctx.Value("tracking_number").(string)
+
+	var void struct{}
+	unseatList = models.Cached{}
 
 	count := 0
 	numberOfAccounts := len(cache)
 	addresses := []string{}
 
-	unseatList := []string{}
 	for address := range cache {
 		addresses = append(addresses, address)
 		count++
 		numberOfAccounts--
 
-		if count == 100 || numberOfAccounts == 0 {
+		if count == 200 || numberOfAccounts == 0 {
 			// Now sort the slice
 			sort.Strings(addresses)
 
@@ -243,14 +251,12 @@ func (k *KnClient) watcher(ctx context.Context, data *models.Data, cfg *models.C
 				votingList = append(votingList, accounts...)
 
 				for _, unseat := range unseats {
-					if _, being := cache[unseat]; being {
-						unseatList = append(unseatList, unseat)
-					}
+					unseatList[unseat] = void
 				}
 
 			} else {
 				k.Log.Errorf("%s | Failed to update account balances from address: %s. Error = %s", trackingNumber, addresses[0], err.Error())
-				return nil, 0, err
+				return nil, nil, 0, err
 			}
 
 			// Give mainnet node some break
@@ -262,11 +268,11 @@ func (k *KnClient) watcher(ctx context.Context, data *models.Data, cfg *models.C
 	}
 
 	// Update accounts that lost their seats
-	if err := repo.Unseat(ctx, unseatList); err != nil {
-		k.Log.Errorf("%s | Failed to unseat accounts. Error: %v", trackingNumber, err)
-	}
+	// if err := repo.Unseat(ctx, unseatList); err != nil {
+	// 	k.Log.Errorf("%s | Failed to unseat accounts. Error: %v", trackingNumber, err)
+	// }
 
-	return votingList, totalNdau, nil
+	return votingList, unseatList, totalNdau, nil
 }
 
 func (k *KnClient) updateBalance(ctx context.Context, addresses []string, conn *ndau.Ndau) (accounts []ndau.Account, unseats []string, total_balance int, err error) {
@@ -293,16 +299,17 @@ func (k *KnClient) updateBalance(ctx context.Context, addresses []string, conn *
 	}
 
 	for address, val := range r {
-		if val.CurrencySeatDate.Year() >= 2016 {
-			account := ndau.Account{
-				Id:               address,
-				CurrencySeatDate: val.CurrencySeatDate,
-				Balance:          val.Balance,
-			}
-			accounts = append(accounts, account)
-		} else {
+		account := ndau.Account{
+			Id:               address,
+			CurrencySeatDate: val.CurrencySeatDate,
+			Balance:          val.Balance,
+		}
+		accounts = append(accounts, account)
+
+		if val.CurrencySeatDate.Year() < 2016 {
 			unseats = append(unseats, address)
 		}
+
 		total_balance = total_balance + val.Balance
 	}
 
@@ -311,7 +318,7 @@ func (k *KnClient) updateBalance(ctx context.Context, addresses []string, conn *
 	return accounts, unseats, total_balance, nil
 }
 
-func (k *KnClient) updateVote(ctx context.Context, votingList []ndau.Account, total_balance int, repo dal.Repo, conn *ndau.Ndau) error {
+func (k *KnClient) updateVote(ctx context.Context, votingList []ndau.Account, unseatList models.Cached, total_balance int, repo dal.Repo, conn *ndau.Ndau) error {
 	trackingNumber, _ := ctx.Value("tracking_number").(string)
 
 	k.Log.Infof("%s | Get current price and total Ndau...", trackingNumber)
@@ -342,12 +349,21 @@ func (k *KnClient) updateVote(ctx context.Context, votingList []ndau.Account, to
 	//   - One third of the votes are assigned equally to each currency seat.
 	//   - One third of the votesare assigned proportionally to each address based on its share of all ndau in circulation
 	//   - And the final third are assigned equally to each of the three oldest currency seat addresses
-	noOfCurrencySeat := len(votingList)
-	for i := 0; i < noOfCurrencySeat; i++ {
+	noOfAccount := len(votingList)
+	noOfCurrencySeat := noOfAccount - len(unseatList)
+	for i := 0; i < noOfAccount; i++ {
+		var power float64
+		address := votingList[i].Id
+		if _, unseated := unseatList[address]; unseated {
+			power = 3000000 * float64(votingList[i].Balance) / float64(r.TotalNdau)
+		} else {
+			power = 3000000 * (1.0/float64(noOfCurrencySeat) + float64(votingList[i].Balance)/float64(r.TotalNdau))
+		}
+
 		vote := models.VotingSetup{
-			Address:          votingList[i].Id,
+			Address:          address,
 			CurrencySeatDate: votingList[i].CurrencySeatDate,
-			Votes:            3000000 * (1.0/float64(noOfCurrencySeat) + float64(votingList[i].Balance)/float64(r.TotalNdau)),
+			Votes:            power,
 		}
 		votes = append(votes, vote)
 	}
