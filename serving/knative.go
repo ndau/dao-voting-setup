@@ -87,6 +87,7 @@ func (k *KnClient) Listen(ctx context.Context, repo dal.Repo, cfg *models.Config
 	}
 
 	k.Log.Infof("knative is listening on port %d", port)
+
 }
 
 // ProcessEvent ...
@@ -149,6 +150,25 @@ func (k *KnClient) ProcessEvent(ctx context.Context, data *models.Data, repo dal
 	// Compute voting power for each seated account
 	if err = k.updateVote(ctx, accountList, unseatList, total, repo, conn); err != nil {
 		k.Log.Errorf("%s | Failed to update account votings", trackingNumber)
+	}
+
+	// Freeze concluded proposals
+	if proposals, err := repo.ListActiveProposal(); err != nil {
+		k.Log.Warnf("%s | Failed to read proposals from database. Error: %v. Skip checking concluded polls", trackingNumber, err)
+	} else {
+		k.Log.Infof("%s | proposals %+v", trackingNumber, proposals)
+		for _, proposal := range proposals {
+			today := time.Now()
+			closingDate := proposal.ClosingDate
+			if today.After(closingDate) {
+				proposalID := proposal.ProposalID
+				k.Log.Infof("%s | Concluding the proposal %d ...", trackingNumber, proposalID)
+				// Update concluded votes
+				if err := repo.UpdateConcludedVotes(ctx, proposalID); err != nil {
+					k.Log.Errorf("%s | Failed to update concluded votes. Will retry next day. Error: %v", trackingNumber, err)
+				}
+			}
+		}
 	}
 
 	k.Log.Infof("%s | Done", trackingNumber)
@@ -241,7 +261,7 @@ func (k *KnClient) watcher(ctx context.Context, data *models.Data, cfg *models.C
 		count++
 		numberOfAccounts--
 
-		if count == 200 || numberOfAccounts == 0 {
+		if count == 300 || numberOfAccounts == 0 {
 			// Now sort the slice
 			sort.Strings(addresses)
 

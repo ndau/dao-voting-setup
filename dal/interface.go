@@ -12,4 +12,6 @@ type Repo interface {
 	ListAccount() ([]models.VotingSetup, error)
 	Unseat(ctx context.Context, addresses []string) error
 	UpsertVotingList(ctx context.Context, votings []models.VotingSetup) error
+	ListActiveProposal() ([]models.Proposal, error)
+	UpdateConcludedVotes(ctx context.Context, proposalId int64) error
 }
