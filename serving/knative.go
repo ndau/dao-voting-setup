@@ -390,19 +390,31 @@ func (k *KnClient) updateVote(ctx context.Context, votingList []ndau.Account, un
 
 	// Find 3 oldest currency seats
 	oldestCurrencySeats := [...]int{0, 1, 2}
-	for i := 3; i < noOfAccount; i++ {
+	firstThree := 0
+	for i := 0; i < noOfAccount; i++ {
 		address := votingList[i].Id
 		if _, unseated := unseatList[address]; !unseated {
-			current := 0
-			youngest := oldestCurrencySeats[current]
-			for j := 1; j < 3; j++ {
-				if votes[youngest].CurrencySeatDate.Before(votes[oldestCurrencySeats[j]].CurrencySeatDate) {
-					current = j
-					youngest = oldestCurrencySeats[j]
+			if firstThree < 3 {
+				oldestCurrencySeats[firstThree] = i
+				firstThree = firstThree + 1
+				k.Log.Infof("%s | i = %d, address = %s", trackingNumber, i, address)
+			} else {
+				current := 0
+				youngest := oldestCurrencySeats[0]
+				if votes[youngest].CurrencySeatDate.Before(votes[oldestCurrencySeats[1]].CurrencySeatDate) ||
+					votes[youngest].CurrencySeatDate.Before(votes[oldestCurrencySeats[2]].CurrencySeatDate) {
+					if votes[oldestCurrencySeats[1]].CurrencySeatDate.After(votes[oldestCurrencySeats[2]].CurrencySeatDate) {
+						current = 1
+						youngest = oldestCurrencySeats[1]
+					} else {
+						current = 2
+						youngest = oldestCurrencySeats[2]
+					}
 				}
-			}
-			if votes[youngest].CurrencySeatDate.After(votingList[i].CurrencySeatDate) {
-				oldestCurrencySeats[current] = i
+
+				if votes[youngest].CurrencySeatDate.After(votingList[i].CurrencySeatDate) {
+					oldestCurrencySeats[current] = i
+				}
 			}
 		}
 	}
