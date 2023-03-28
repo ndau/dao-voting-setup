@@ -64,7 +64,7 @@ func (db *Db) ListAccount() ([]models.VotingSetup, error) {
 // InsertVotingList -
 func (db *Db) UpsertVotingList(ctx context.Context, votings []models.VotingSetup) error {
 	trackingNumber := ctx.Value("tracking_number").(string)
-	db.Log.Infof("%s | Inserting '%d' account voting into the BPCDao.accounts table", trackingNumber, len(votings))
+	db.Log.Infof("%s | Inserting '%d' account voting into the accounts table", trackingNumber, len(votings))
 
 	return db.Client.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "address"}},
