@@ -364,6 +364,7 @@ func (k *KnClient) updateVote(ctx context.Context, votingList []ndau.Account, un
 	// Now let's compute the voting power for each seated account
 
 	votes := []models.VotingSetup{}
+	oldestCurrencySeats := [...]int{0, 1, 2}
 
 	// There are 9,000,000 votes in total
 	//   - One third of the votes are assigned equally to each currency seat.
@@ -378,6 +379,21 @@ func (k *KnClient) updateVote(ctx context.Context, votingList []ndau.Account, un
 			power = 3000000 * float64(votingList[i].Balance) / float64(r.TotalNdau)
 		} else {
 			power = 3000000 * (1.0/float64(noOfCurrencySeat) + float64(votingList[i].Balance)/float64(r.TotalNdau))
+
+			// Find 3 oldest currency seats
+			current := 0
+			if i > 2 {
+				youngest := oldestCurrencySeats[current]
+				for j := 1; j < 3; j++ {
+					if votes[youngest].CurrencySeatDate.Before(votes[oldestCurrencySeats[j]].CurrencySeatDate) {
+						current = j
+						youngest = oldestCurrencySeats[j]
+					}
+				}
+				if votes[youngest].CurrencySeatDate.After(votingList[i].CurrencySeatDate) {
+					oldestCurrencySeats[current] = i
+				}
+			}
 		}
 
 		vote := models.VotingSetup{
@@ -388,9 +404,9 @@ func (k *KnClient) updateVote(ctx context.Context, votingList []ndau.Account, un
 		votes = append(votes, vote)
 	}
 
-	votes[0].Votes = votes[0].Votes + 1000000
-	votes[1].Votes = votes[1].Votes + 1000000
-	votes[2].Votes = votes[2].Votes + 1000000
+	votes[oldestCurrencySeats[0]].Votes = votes[oldestCurrencySeats[0]].Votes + 1000000
+	votes[oldestCurrencySeats[1]].Votes = votes[oldestCurrencySeats[1]].Votes + 1000000
+	votes[oldestCurrencySeats[2]].Votes = votes[oldestCurrencySeats[2]].Votes + 1000000
 
 	k.Log.Infof("%s | Start updating %d account votings...", trackingNumber, len(votingList))
 
